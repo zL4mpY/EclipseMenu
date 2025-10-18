@@ -82,3 +82,17 @@ void DSPRecorder::tryUnpause(float time) const {
 
     if (time >= songTime) m_masterGroup->setPaused(false);
 }
+
+std::vector<float> DSPRecorder::getLatestBuffer(size_t numSamples) {
+    std::lock_guard lock(m_lock);
+    
+    if (m_data.size() < numSamples) {
+        return {};
+    }
+
+    std::vector<float> result(m_data.begin(), m_data.begin() + numSamples);
+    
+    m_data.erase(m_data.begin(), m_data.begin() + numSamples);
+    
+    return result;
+}

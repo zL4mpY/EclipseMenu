@@ -14,6 +14,8 @@ public:
     /// @brief Returns the recorded PCM data and clears the buffer.
     std::vector<float> getData();
 
+    std::vector<float> getLatestBuffer(size_t numSamples);
+
     [[nodiscard]] bool isRecording() const { return m_recording; }
 
     void tryUnpause(float time) const;

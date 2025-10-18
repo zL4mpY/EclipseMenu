@@ -57,6 +57,11 @@ namespace eclipse::recorder {
             delegate = nullptr;
         }
 
+        if (m_audioFifo) {
+            fclose(m_audioFifo);
+            m_audioFifo = nullptr;
+        }
+
         director->setProjection(cocos2d::ccDirectorProjection::kCCDirectorProjection2D);
     }
 
@@ -81,9 +86,16 @@ namespace eclipse::recorder {
         geode::log::debug("Recorder thread started.");
         
         // Путь к FIFO в WINE (Z: = корень Linux)
-        FILE* fifo = fopen("Z:\\tmp\\gd_recorder", "wb");
+        FILE* fifo = fopen("Z:\\tmp\\gd_vrecorder", "wb");
         if (!fifo) {
-            m_callback("Failed to open FIFO. Run: mkfifo /tmp/gd_recorder");
+            m_callback("Failed to open FIFO. Run: mkfifo /tmp/gd_vrecorder");
+            stop();
+            return;
+        }
+
+        m_audioFifo = fopen("Z:\\tmp\\gd_arecorder", "wb");
+        if (!m_audioFifo) {
+            m_callback("Failed to open audio FIFO. Run: mkfifo /tmp/gd_arecorder");
             stop();
             return;
         }
@@ -93,12 +105,29 @@ namespace eclipse::recorder {
     
         debug::Timer timer("Recording", &m_recordingDuration);
     
+        constexpr size_t FLOATS_PER_FRAME = (48000 / 60) * 2; // 800 * 2 = 1600 float'ов
+
         while (m_recording) {
+            // Получаем аудио, соответствующее одному кадру
+            auto audioFrame = DSPRecorder::get()->getLatestBuffer(FLOATS_PER_FRAME);
+
+            // Пишем видео
             fwrite(m_currentFrame.data(), 1, m_currentFrame.size(), fifo);
             fflush(fifo);
-        
+
+            // Пишем аудио, если есть
+            if (m_audioFifo && !audioFrame.empty()) {
+                fwrite(audioFrame.data(), sizeof(float), audioFrame.size(), m_audioFifo);
+                fflush(m_audioFifo);
+            } else if (m_audioFifo) {
+                // Если не хватает аудио — запишем тишину (чтобы не рассинхронизироваться)
+                std::vector<float> silence(FLOATS_PER_FRAME, 0.0f);
+                fwrite(silence.data(), sizeof(float), silence.size(), m_audioFifo);
+                fflush(m_audioFifo);
+            }
+
             if (!m_recording) break;
-        
+
             m_frameReady.set(false);
             m_frameReady.wait_for(true);
         }

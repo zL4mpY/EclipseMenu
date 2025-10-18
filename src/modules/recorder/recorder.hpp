@@ -19,6 +19,7 @@ namespace eclipse::recorder {
         void setCallback(const std::function<void(std::string const&)>& callback) { m_callback = callback; }
 
         static std::vector<std::string> getAvailableCodecs();
+        FILE* m_audioFifo = nullptr;
 
     public:
         ffmpeg::RenderSettings m_renderSettings{};
