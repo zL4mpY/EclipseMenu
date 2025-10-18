@@ -84,16 +84,22 @@ namespace eclipse::recorder {
     void Recorder::recordThread() {
         geode::utils::thread::setName("Eclipse Recorder Thread");
         geode::log::debug("Recorder thread started.");
+
+        constexpr int TARGET_FPS = 60;
+        constexpr int AUDIO_SAMPLE_RATE = 48000; // или получи из FMOD
+        constexpr int CHANNELS = 2; // stereo
+        constexpr size_t SAMPLES_PER_FRAME = AUDIO_SAMPLE_RATE / TARGET_FPS; // 800
+        constexpr size_t FLOATS_PER_FRAME = SAMPLES_PER_FRAME * CHANNELS;   // 1600
         
         // Путь к FIFO в WINE (Z: = корень Linux)
-        FILE* fifo = fopen("Z:\\tmp\\gd_vrecorder", "wb");
+        FILE* fifo = fopen("Z:\\tmp\\gd_vrecorder.raw", "wb");
         if (!fifo) {
             m_callback("Failed to open FIFO. Run: mkfifo /tmp/gd_vrecorder");
             stop();
             return;
         }
 
-        m_audioFifo = fopen("Z:\\tmp\\gd_arecorder", "wb");
+        m_audioFifo = fopen("Z:\\tmp\\gd_arecorder.raw", "wb");
         if (!m_audioFifo) {
             m_callback("Failed to open audio FIFO. Run: mkfifo /tmp/gd_arecorder");
             stop();
@@ -104,8 +110,6 @@ namespace eclipse::recorder {
         m_frameReady.wait_for(true);
     
         debug::Timer timer("Recording", &m_recordingDuration);
-    
-        constexpr size_t FLOATS_PER_FRAME = (48000 / 60) * 2; // 800 * 2 = 1600 float'ов
 
         while (m_recording) {
             // Получаем аудио, соответствующее одному кадру
