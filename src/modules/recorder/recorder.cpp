@@ -92,14 +92,14 @@ namespace eclipse::recorder {
         constexpr size_t FLOATS_PER_FRAME = SAMPLES_PER_FRAME * CHANNELS;   // 1600
         
         // Путь к FIFO в WINE (Z: = корень Linux)
-        FILE* fifo = fopen("Z:\\tmp\\gd_vrecorder.raw", "wb");
+        FILE* fifo = fopen("Z:\\tmp\\gd_vrecorder", "wb");
         if (!fifo) {
             m_callback("Failed to open FIFO. Run: mkfifo /tmp/gd_vrecorder");
             stop();
             return;
         }
 
-        m_audioFifo = fopen("Z:\\tmp\\gd_arecorder.raw", "wb");
+        m_audioFifo = fopen("Z:\\tmp\\gd_arecorder", "wb");
         if (!m_audioFifo) {
             m_callback("Failed to open audio FIFO. Run: mkfifo /tmp/gd_arecorder");
             stop();
