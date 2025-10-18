@@ -79,70 +79,33 @@ namespace eclipse::recorder {
     void Recorder::recordThread() {
         geode::utils::thread::setName("Eclipse Recorder Thread");
         geode::log::debug("Recorder thread started.");
-
-        ffmpeg::Recorder ffmpegRecorder;
-        if (!ffmpegRecorder.isValid()) {
+        
+        // Путь к FIFO в WINE (Z: = корень Linux)
+        FILE* fifo = fopen("Z:\\tmp\\gd_recorder", "wb");
+        if (!fifo) {
+            m_callback("Failed to open FIFO. Run: mkfifo /tmp/gd_recorder");
             stop();
-            m_callback("Failed to initialize ffmpeg recorder.");
-            geode::log::debug("Recorder thread stopped.");
             return;
         }
-
-        auto res = ffmpegRecorder.init(m_renderSettings);
-        if (res.isErr()) {
-            stop();
-            m_callback(res.unwrapErr());
-            ffmpegRecorder.stop();
-            m_frameReady.set(false); // unlock the main thread if it's waiting
-            geode::log::debug("Recorder thread stopped.");
-            return;
-        }
-
-        // wait for the first frame
+    
         m_frameReady.set(false);
         m_frameReady.wait_for(true);
-
-        {
-            // record the time it took to record the video (to show in the end)
-            debug::Timer timer("Recording", &m_recordingDuration);
-
-            while (m_recording) {
-                res = ffmpegRecorder.writeFrame(m_currentFrame);
-                if (res.isErr()) {
-                    m_callback(res.unwrapErr());
-
-                    // stop recording if an error occurred
-                    this->stop();
-                    break;
-                }
-
-                // break if we're not recording anymore (to avoid waiting forever)
-                if (!m_recording) break;
-
-                m_frameReady.set(false);
-                m_frameReady.wait_for(true);
-            }
+    
+        debug::Timer timer("Recording", &m_recordingDuration);
+    
+        while (m_recording) {
+            fwrite(m_currentFrame.data(), 1, m_currentFrame.size(), fifo);
+            fflush(fifo);
+        
+            if (!m_recording) break;
+        
+            m_frameReady.set(false);
+            m_frameReady.wait_for(true);
         }
-
+    
+        fclose(fifo);
         geode::log::debug("Recorder thread stopped.");
-
-        ffmpegRecorder.stop();
-
-        DSPRecorder::get()->stop();
-        auto data = DSPRecorder::get()->getData();
-
-        std::filesystem::path tempPath = m_renderSettings.m_outputFile.parent_path() / "music.mp4";
-
-        res = ffmpeg::AudioMixer::mixVideoRaw(m_renderSettings.m_outputFile, data, tempPath);
-        if (res.isErr()) return m_callback(res.unwrapErr());
-
-        std::error_code ec;
-        std::filesystem::remove(m_renderSettings.m_outputFile, ec);
-        if (ec) return m_callback("Failed to remove old video file.");
-
-        ec = {};
-        std::filesystem::rename(tempPath, m_renderSettings.m_outputFile, ec);
-        if (ec) return m_callback("Failed to rename temporary video file.");
+        m_callback("Recording sent to FIFO. Check /tmp/gd_recorder.");
     }
 
     std::vector<std::string> Recorder::getAvailableCodecs() {
