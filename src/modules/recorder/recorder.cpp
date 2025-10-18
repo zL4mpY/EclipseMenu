@@ -109,22 +109,22 @@ namespace eclipse::recorder {
 
         while (m_recording) {
             // Получаем аудио, соответствующее одному кадру
-            // auto audioFrame = DSPRecorder::get()->getLatestBuffer(FLOATS_PER_FRAME);
+            auto audioFrame = DSPRecorder::get()->getLatestBuffer(FLOATS_PER_FRAME);
 
             // Пишем видео
             fwrite(m_currentFrame.data(), 1, m_currentFrame.size(), fifo);
             fflush(fifo);
 
-            // // Пишем аудио, если есть
-            // if (m_audioFifo && !audioFrame.empty()) {
-            //     fwrite(audioFrame.data(), sizeof(float), audioFrame.size(), m_audioFifo);
-            //     fflush(m_audioFifo);
-            // } else if (m_audioFifo) {
-            //     // Если не хватает аудио — запишем тишину (чтобы не рассинхронизироваться)
-            //     std::vector<float> silence(FLOATS_PER_FRAME, 0.0f);
-            //     fwrite(silence.data(), sizeof(float), silence.size(), m_audioFifo);
-            //     fflush(m_audioFifo);
-            // }
+            // Пишем аудио, если есть
+            if (m_audioFifo && !audioFrame.empty()) {
+                fwrite(audioFrame.data(), sizeof(float), audioFrame.size(), m_audioFifo);
+                fflush(m_audioFifo);
+            } else if (m_audioFifo) {
+                // Если не хватает аудио — запишем тишину (чтобы не рассинхронизироваться)
+                std::vector<float> silence(FLOATS_PER_FRAME, 0.0f);
+                fwrite(silence.data(), sizeof(float), silence.size(), m_audioFifo);
+                fflush(m_audioFifo);
+            }
 
             if (!m_recording) break;
 
@@ -134,7 +134,7 @@ namespace eclipse::recorder {
     
         fclose(fifo);
         geode::log::debug("Recorder thread stopped.");
-        m_callback("Recording sent to FIFO. Check /tmp/gd_recorder.");
+        m_callback("Recording sent to FIFO. Check /tmp/gd_vrecorder.");
     }
 
     std::vector<std::string> Recorder::getAvailableCodecs() {
