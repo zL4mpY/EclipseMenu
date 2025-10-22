@@ -2,6 +2,8 @@
 
 #include <memory>
 #include <thread>
+#include <fstream>
+#include <nlohmann/json.hpp>
 #include <utility>
 #include <Geode/binding/FMODAudioEngine.hpp>
 #include <Geode/loader/Log.hpp>
@@ -57,12 +59,26 @@ namespace eclipse::recorder {
             delegate = nullptr;
         }
 
-        if (m_audioFifo) {
-            fclose(m_audioFifo);
-            m_audioFifo = nullptr;
-        }
-
         director->setProjection(cocos2d::ccDirectorProjection::kCCDirectorProjection2D);
+    }
+
+    void Recorder::writeSettingsFile() {
+        nlohmann::json settings;
+        settings["width"] = m_renderSettings.m_width;
+        settings["height"] = m_renderSettings.m_height;
+        settings["fps"] = m_renderSettings.m_fps;
+        settings["pixel_format"] = m_renderSettings.m_pixelFormat;
+        settings["output"] = m_renderSettings.m_outputFile;
+        settings["codec"] = m_renderSettings.m_codec;
+        settings["bitrate"] = m_renderSettings.m_bitrate;
+        settings["colorspace_filters"] = m_renderSettings.m_colorspaceFilters;
+
+
+        std::ofstream file("Z:\\tmp\\gd_recorder_settings.json");
+        if (file.is_open()) {
+            file << settings.dump(2);
+            file.close();
+        }
     }
 
     void Recorder::captureFrame() {
@@ -85,22 +101,11 @@ namespace eclipse::recorder {
         geode::utils::thread::setName("Eclipse Recorder Thread");
         geode::log::debug("Recorder thread started.");
 
-        constexpr int TARGET_FPS = 60;
-        constexpr int AUDIO_SAMPLE_RATE = 48000; // или получи из FMOD
-        constexpr int CHANNELS = 2; // stereo
-        constexpr size_t SAMPLES_PER_FRAME = AUDIO_SAMPLE_RATE / TARGET_FPS; // 800
-        constexpr size_t FLOATS_PER_FRAME = SAMPLES_PER_FRAME * CHANNELS;   // 1600
+        this->writeSettingsFile();
 
         FILE* fifo = fopen("Z:\\tmp\\gd_vrecorder", "wb");
         if (!fifo) {
             m_callback("Failed to open FIFO. Run: mkfifo /tmp/gd_vrecorder");
-            stop();
-            return;
-        }
-
-        m_audioFifo = fopen("Z:\\tmp\\gd_arecorder", "wb");
-        if (!m_audioFifo) {
-            m_callback("Failed to open audio FIFO. Run: mkfifo /tmp/gd_arecorder");
             stop();
             return;
         }
@@ -111,19 +116,8 @@ namespace eclipse::recorder {
         debug::Timer timer("Recording", &m_recordingDuration);
 
         while (m_recording) {
-            // auto audioFrame = DSPRecorder::get()->getLatestBuffer(FLOATS_PER_FRAME);
-
             fwrite(m_currentFrame.data(), 1, m_currentFrame.size(), fifo);
             fflush(fifo);
-
-            // if (m_audioFifo && !audioFrame.empty()) {
-            //     fwrite(audioFrame.data(), sizeof(float), audioFrame.size(), m_audioFifo);
-            //     // fflush(m_audioFifo);
-            // } else if (m_audioFifo) {
-            //     std::vector<float> silence(FLOATS_PER_FRAME, 0.0f);
-            //     fwrite(silence.data(), sizeof(float), silence.size(), m_audioFifo);
-            //     // fflush(m_audioFifo);
-            // }
 
             if (!m_recording) break;
 
@@ -132,6 +126,25 @@ namespace eclipse::recorder {
         }
     
         fclose(fifo);
+        DSPRecorder::get()->stop();
+
+        FILE* done = fopen("Z:\\tmp\\gd_recording_done", "w");
+        if (done) fclose(done);
+
+        auto audioData = DSPRecorder::get()->getData();
+
+        std::string audioTempPath = "Z:\\tmp\\gd_audio.f32";
+        FILE* audioFile = fopen(audioTempPath.c_str(), "wb");
+        if (audioFile) {
+            fwrite(audioData.data(), sizeof(float), audioData.size(), audioFile);
+            fclose(audioFile);
+            geode::log::debug("Audio saved to {}", audioTempPath);
+        } else {
+            geode::log::error("Failed to save audio to {}", audioTempPath);
+            m_callback("Failed to save audio.");
+            return;
+        }
+
         geode::log::debug("Recorder thread stopped.");
         m_callback("Recording sent to FIFO. Check /tmp/gd_vrecorder.");
     }
