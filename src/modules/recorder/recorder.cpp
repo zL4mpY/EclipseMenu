@@ -111,19 +111,19 @@ namespace eclipse::recorder {
         debug::Timer timer("Recording", &m_recordingDuration);
 
         while (m_recording) {
-            auto audioFrame = DSPRecorder::get()->getLatestBuffer(FLOATS_PER_FRAME);
+            // auto audioFrame = DSPRecorder::get()->getLatestBuffer(FLOATS_PER_FRAME);
 
             fwrite(m_currentFrame.data(), 1, m_currentFrame.size(), fifo);
             fflush(fifo);
 
-            if (m_audioFifo && !audioFrame.empty()) {
-                fwrite(audioFrame.data(), sizeof(float), audioFrame.size(), m_audioFifo);
-                // fflush(m_audioFifo);
-            } else if (m_audioFifo) {
-                std::vector<float> silence(FLOATS_PER_FRAME, 0.0f);
-                fwrite(silence.data(), sizeof(float), silence.size(), m_audioFifo);
-                // fflush(m_audioFifo);
-            }
+            // if (m_audioFifo && !audioFrame.empty()) {
+            //     fwrite(audioFrame.data(), sizeof(float), audioFrame.size(), m_audioFifo);
+            //     // fflush(m_audioFifo);
+            // } else if (m_audioFifo) {
+            //     std::vector<float> silence(FLOATS_PER_FRAME, 0.0f);
+            //     fwrite(silence.data(), sizeof(float), silence.size(), m_audioFifo);
+            //     // fflush(m_audioFifo);
+            // }
 
             if (!m_recording) break;
 
