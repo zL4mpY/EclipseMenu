@@ -3,9 +3,6 @@
 #include <memory>
 #include <thread>
 #include <utility>
-#include <fcntl.h>
-#include <unistd.h> // для write, close
-#include <errno.h>
 #include <Geode/binding/FMODAudioEngine.hpp>
 #include <Geode/loader/Log.hpp>
 #include <Geode/utils/general.hpp>
@@ -60,6 +57,11 @@ namespace eclipse::recorder {
             delegate = nullptr;
         }
 
+        if (m_audioFifo) {
+            fclose(m_audioFifo);
+            m_audioFifo = nullptr;
+        }
+
         director->setProjection(cocos2d::ccDirectorProjection::kCCDirectorProjection2D);
     }
 
@@ -84,22 +86,21 @@ namespace eclipse::recorder {
         geode::log::debug("Recorder thread started.");
 
         constexpr int TARGET_FPS = 60;
-        constexpr int AUDIO_SAMPLE_RATE = 48000;
+        constexpr int AUDIO_SAMPLE_RATE = 48000; // или получи из FMOD
         constexpr int CHANNELS = 2; // stereo
         constexpr size_t SAMPLES_PER_FRAME = AUDIO_SAMPLE_RATE / TARGET_FPS; // 800
         constexpr size_t FLOATS_PER_FRAME = SAMPLES_PER_FRAME * CHANNELS;   // 1600
 
-        int videoFd = open("/tmp/gd_vrecorder", O_WRONLY | O_NONBLOCK);
-        if (videoFd == -1) {
-            m_callback("Failed to open video FIFO (non-blocking)");
+        FILE* fifo = fopen("Z:\\tmp\\gd_vrecorder", "wb");
+        if (!fifo) {
+            m_callback("Failed to open FIFO. Run: mkfifo /tmp/gd_vrecorder");
             stop();
             return;
         }
 
-        int audioFd = open("/tmp/gd_arecorder", O_WRONLY | O_NONBLOCK);
-        if (audioFd == -1) {
-            m_callback("Failed to open audio FIFO (non-blocking)");
-            close(videoFd);
+        m_audioFifo = fopen("Z:\\tmp\\gd_arecorder", "wb");
+        if (!m_audioFifo) {
+            m_callback("Failed to open audio FIFO. Run: mkfifo /tmp/gd_arecorder");
             stop();
             return;
         }
@@ -109,63 +110,28 @@ namespace eclipse::recorder {
     
         debug::Timer timer("Recording", &m_recordingDuration);
 
-        // while (m_recording) {
-        //     // Получаем аудио, соответствующее одному кадру
-        //     auto audioFrame = DSPRecorder::get()->getLatestBuffer(FLOATS_PER_FRAME);
-
-        //     // Пишем видео
-        //     fwrite(m_currentFrame.data(), 1, m_currentFrame.size(), fifo);
-        //     fflush(fifo);
-
-        //     // Пишем аудио, если есть
-        //     if (m_audioFifo && !audioFrame.empty()) {
-        //         fwrite(audioFrame.data(), sizeof(float), audioFrame.size(), m_audioFifo);
-        //         fflush(m_audioFifo);
-        //     } else if (m_audioFifo) {
-        //         // Если не хватает аудио — запишем тишину (чтобы не рассинхронизироваться)
-        //         std::vector<float> silence(FLOATS_PER_FRAME, 0.0f);
-        //         fwrite(silence.data(), sizeof(float), silence.size(), m_audioFifo);
-        //         fflush(m_audioFifo);
-        //     }
-
-        //     if (!m_recording) break;
-
-        //     m_frameReady.set(false);
-        //     m_frameReady.wait_for(true);
-        // }
-    
         while (m_recording) {
-            // Видео
-            ssize_t written = write(videoFd, m_currentFrame.data(), m_currentFrame.size());
-            if (written == -1) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    // FIFO full or no reader — skip frame or log
-                    geode::log::warn("Video FIFO not ready (no reader?)");
-                } else {
-                    geode::log::error("Video write error: {}", strerror(errno));
-                    break;
-                }
+            auto audioFrame = DSPRecorder::get()->getLatestBuffer(FLOATS_PER_FRAME);
+
+            fwrite(m_currentFrame.data(), 1, m_currentFrame.size(), fifo);
+            fflush(fifo);
+
+            if (m_audioFifo && !audioFrame.empty()) {
+                fwrite(audioFrame.data(), sizeof(float), audioFrame.size(), m_audioFifo);
+                fflush(m_audioFifo);
+            } else if (m_audioFifo) {
+                std::vector<float> silence(FLOATS_PER_FRAME, 0.0f);
+                fwrite(silence.data(), sizeof(float), silence.size(), m_audioFifo);
+                fflush(m_audioFifo);
             }
 
-            // Аудио
-            std::vector<float> audioFrame = DSPRecorder::get()->getLatestBuffer(FLOATS_PER_FRAME);
-            if (audioFrame.empty()) {
-                audioFrame.assign(FLOATS_PER_FRAME, 0.0f);
-            }
+            if (!m_recording) break;
 
-            written = write(audioFd, audioFrame.data(), audioFrame.size() * sizeof(float));
-            if (written == -1) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    geode::log::warn("Audio FIFO not ready");
-                } else {
-                    geode::log::error("Audio write error: {}", strerror(errno));
-                    break;
-                }
-            }
+            m_frameReady.set(false);
+            m_frameReady.wait_for(true);
         }
-
-        close(videoFd);
-        close(audioFd);
+    
+        fclose(fifo);
         geode::log::debug("Recorder thread stopped.");
         m_callback("Recording sent to FIFO. Check /tmp/gd_vrecorder.");
     }
