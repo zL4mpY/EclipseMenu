@@ -67,7 +67,7 @@ namespace eclipse::recorder {
         settings["width"] = m_renderSettings.m_width;
         settings["height"] = m_renderSettings.m_height;
         settings["fps"] = m_renderSettings.m_fps;
-        settings["pixel_format"] = m_renderSettings.m_pixelFormat;
+        settings["pixel_format"] = "rgb";
         settings["output"] = m_renderSettings.m_outputFile;
         settings["codec"] = m_renderSettings.m_codec;
         settings["bitrate"] = m_renderSettings.m_bitrate;
